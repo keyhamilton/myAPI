@@ -130,3 +130,5 @@ dist
 .pnp.*
 # access key
 myKey.json
+# json files
+*.json
