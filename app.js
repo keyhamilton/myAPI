@@ -16,6 +16,14 @@ var headers = {
     'Content-Type':'Application/json; charset=utf-8',
     'Keep-Alive':'timeout=6'
 }    
+// config firestore
+const admin = require('firebase-admin')
+const serviceAccount = require('./myKey.json')
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+})
+
+const db = admin.firestore()
 
 // app.use(express.json) antes para processar o request com json e método POST
 // app.use(express.urlencoded({extended: true}))
@@ -30,10 +38,20 @@ app.get('/', (req, res)=>{
 })
 // retorna todos os posts no formato JSON, caso existam posts
 app.get('/posts', (req, res)=>{
-    let posts = myBlog.posts
-    if(posts){
-        res.send({posts})
-    }else{res.send({})}
+    let posts = []
+    db.collection("posts")
+    .get()
+    .then((querySnapshot) => {
+        querySnapshot.forEach((doc) => {
+            // doc.data() is never undefined for query doc snapshots
+            posts.push(doc.data())
+        });
+        return res.status(200).send({...posts});
+    })
+    .catch((error) => {
+        console.log("Error getting documents: ", error);
+    }); 
+    
     
 })
 
@@ -41,92 +59,163 @@ app.get('/posts', (req, res)=>{
 
 // retorna post por id ou nada, se não encontrar o post solicitado retorna status 404
 app.get(route, (req, res)=>{
-    let post = myBlog.retrieve(req.params.id)
-    if(post){
-        res.set(headers)
-        res.status(200).send({post})
-    } else { res.status(404).send({}) }
-        
+    let post = {}
+    db.collection("posts")
+    .get()
+    .then((querySnapshot) => {
+        querySnapshot.forEach((doc) => {
+            // doc.data() is never undefined for query doc snapshots
+            if(req.params.id == doc.data().id){
+                post = doc.data()
+            }
+        });
+        return {...post}
+    })
+    .then((post)=>{
+        var size = Object.keys(post).length
+        console.log(size)
+        if(size > 0){
+            return res.status(200).send(post)
+        }else{return res.status(404).send(post)}
+    })
+    .catch((error) => {
+        console.log("Error getting documents: ", error);
+    }); 
     
 })
 
 // retorna post deletado e código 204, caso o post exista, do contrário, retorna not found e código 404
 
 app.delete(route, (req, res)=>{
-    let post = myBlog.delete(req.params.id)
-    if(post){
-        res.set(headers)
-        res.sendStatus(204)
-    }else{res.status(404).send('404 -  NOT FOUND')}
+     
+    let postRef = db.collection("posts")
+    .get()
+    .then((querySnapshot) => {
+        querySnapshot.forEach((doc) => {
+            // doc.data() is never undefined for query doc snapshots
+            if(req.params.id == doc.data().id){
+                postRef = doc.id
+            }
+            
+        });
+        return postRef
+    })
+    .catch((error) => {
+        console.log("Error getting documents: ", error);
+    });
+    postRef.then(id =>{
+        db.collection("posts").doc(id).get()
+        .then((doc)=>{
+            let post = doc
+            return post
+        })
+        .then((post) => {
+            console.log(post.data())
+            db.collection("posts").doc(post.id).delete()
+            res.status(204).send(post.data())
+        })
+    })
 })
 
 // faz um update em um post, caso ele exista
 
 app.use(express.json());
 //app.use(express.urlencoded({extended: true}));
+
+let docs =  db.collection('posts').get(); //pega todos os posts --> promise
+
 app.put(route, (req, res)=> {
-    let pst = myBlog.retrieve(req.params.id)
-    if(pst){
-        new_post = new post()
-        new_post.id = pst.id
-        if(req.body.text){
-            new_post.text = req.body.text
-        }else{new_post.text = pst.text}
-        if(req.body.likes){
-            new_post.likes = req.body.likes
-        }else{new_post.likes = pst.likes}
-        myBlog.update(new_post)
-        res.set(headers)
-        res.sendStatus(200)
-    }else{ res.status(404).send('404 -  NOT FOUND')}
+    let docRef;
+    docs.then((doc)=>{
+        doc.forEach((post)=>{
+            if(post.data().id == req.params.id){
+                docRef = post.id;
+            }
+        })
+        return docRef
+    })
+    .then((docRef)=>{
+        if(docRef){
+            db.collection('posts').doc(docRef).update(req.body)
+            res.status(200).send('updated')
+        }else{res.status(404).send('404 - NOT FOUND😫🤬')}
+        
+    })
+    
+    //TODO: get docRef / check if exists / check fields to update (req.params)
+    //update fields / if bad request, send 404 / if good request, send 200
 })
 // update um post, caso ele exista
 app.patch(route, (req, res)=> {
-    let pst = myBlog.retrieve(req.params.id)
-    if(pst){
-        new_post = new post()
-        new_post.id = pst.id
-        if(req.body.text){
-            new_post.text = req.body.text
-        }else{new_post.text = pst.text}
-        if(req.body.likes){
-            new_post.likes = req.body.likes
-        }else{new_post.likes = pst.likes}
-        myBlog.update(new_post)
-        res.set(headers)
-        res.sendStatus(200)
-    }else{ res.status(404).send('404 -  NOT FOUND')}
+    let docRef;
+    docs.then((doc)=>{
+        doc.forEach((post)=>{
+            if(post.data().id == req.params.id){
+                docRef = post.id;
+            }
+        })
+        return docRef
+    })
+    .then((docRef)=>{
+        if(docRef){
+            db.collection('posts').doc(docRef).update(req.body)
+            res.status(200).send('updated')
+        }else{res.status(404).send('😥 - 404 - NOT FOUND - 🤬')}
+        
+    })
+    //TODO: get docRef / check if exists / check fields to update (req.params)
+    //update fields / if bad request, send 404 / if good request, send 200
 })
 // incrementa likes
 app.patch(route_like, (req, res)=> {
-    let pst = myBlog.retrieve(req.params.id)
-    if(pst){
-        pst.liked()
-        myBlog.update(pst)
-        res.set(headers)
-        res.sendStatus(200)
-    }else{ res.status(404).send('404 -  NOT FOUND')}
-})
-// cria id universal
-var uuid = 0
-// encontra a id do ultimo post e atribui o valor a variavel uuid
-// considere tornar uma função middleware no futuro, mas por questão de legibilidade do codigo isso não foi feito aqui
-myBlog.posts.forEach(element => {
-    if(element.id > uuid){
-        uuid = element.id
-    }
+    let docRef;
+    docs.then((doc)=>{
+        doc.forEach((post)=>{
+            if(post.data().id == req.params.id){
+                docRef = post.id;
+            }
+        })
+        return docRef
+    })
+    .then((docRef)=>{
+        if(docRef){
+            db.collection('posts').doc(docRef).update({
+                likes: admin.firestore.FieldValue.increment(1)
+            })
+            res.status(200).send('updated')
+        }else{res.status(404).send('😥 - 404 - NOT FOUND - 🤬')}
+        
+    })
+    //TODO: get docRef /check if exists / increment id field of the doc
     
-});
-// cria um novo post
-app.post('/posts', (req, res)=>{
-    let pst = new post()
-    uuid = uuid+1
-    pst.id = uuid
-    pst.text = req.body.text
-    myBlog.create(pst)
-    res.status(201).send(myBlog.retrieve(uuid))
 })
 
+app.post('/posts', (req, res)=>{
+    
+    docs.then((d)=>{
+        
+        db.collection('posts').add({
+            text: req.body.text,
+            date: admin.firestore.FieldValue.serverTimestamp(),
+            id: d.size+1, //atribui ao campo id quantidade de posts mais um
+            likes: 0
+        })  
+        .then((docRef)=>{
+
+            docRef.get().then((doc) => {
+            if (doc.exists) { //retorna true se o post existir
+                res.status(201).json(doc.data()); //envia o post criado --> json
+            } else {
+                // doc.data() will be undefined in this case
+                console.log("No such document!");
+            }
+            })
+            .catch((error) => {
+                console.log("Error getting document:", error);
+            });
+        })
+    });
+})
 app.listen(port, ()=>{
     console.log(`Example app listening at port ${port}`)
 })

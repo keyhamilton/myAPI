@@ -1,4 +1,5 @@
 class post{
+    date;
     constructor(id, text, likes){
         this.id = id
         this.text = text
