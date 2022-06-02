@@ -29,31 +29,65 @@ const db = admin.firestore()
 // app.use(express.urlencoded({extended: true}))
 
 
-
+// middleware para todos os requests
+app.use(express.json());
+app.use(express.urlencoded({extended: true}));
 // retorna a página inicial
 app.get('/', (req, res)=>{
     res.status(200).send("You're at home")
     
     
 })
+
 // retorna todos os posts no formato JSON, caso existam posts
 app.get('/posts', (req, res)=>{
-    let posts = []
-    db.collection("posts")
-    .get()
-    .then((querySnapshot) => {
-        querySnapshot.forEach((doc) => {
-            // doc.data() is never undefined for query doc snapshots
-            posts.push(doc.data())
-        });
-        return res.status(200).send({...posts});
-    })
-    .catch((error) => {
-        console.log("Error getting documents: ", error);
-    }); 
+
+    //TODO: check if there is a query string / if positive, present data pages
+    // In case there is a query, divide data into pages, to the amount of pages + 1
+    // If we find page=2, we try to calculate 2 pages and present page 2
+    // 
+    // If no query was found, present all data 
+    var size = parseInt(req.query.page)
+    var posts = []
+    if(size){
+        db.collection("posts").orderBy("date", "desc").limit(parseInt(req.query.page)*2)
+        .get()
+        .then((querySnapshot) => {
+            console.log(querySnapshot.size)
+            if(querySnapshot.size >= parseInt(req.query.page)*2){
+                querySnapshot.forEach((doc)=>{
+                    posts.push(doc.data());
+                })
+                var json = {
+                    count: posts.length,
+                    previous: `http://localhost:${port}/posts/?page=${parseInt(req.query.page)-1}`,
+                    next: `http://localhost:${port}/posts/?page=${parseInt(req.query.page)+1}`,
+                    postList: posts.slice(-2),
+                } 
+                return res.status(200).json(json);
+            }else{res.send('Not found')}
+        })
+        //console.log(size)
+        //res.send('Calcular as páginas...😥')
+    }else{
+        db.collection("posts").orderBy("date", "desc")
+        .get()
+        .then((querySnapshot) => {
+            querySnapshot.forEach((doc)=>{
+                posts.push(doc.data());
+            })
     
-    
+            return res.status(200).json({...posts});
+            
+        })
+        .catch((error) => {
+            console.log("Error getting documents: ", error);
+
+        })
+    } 
 })
+    
+
 
 
 
@@ -73,7 +107,6 @@ app.get(route, (req, res)=>{
     })
     .then((post)=>{
         var size = Object.keys(post).length
-        console.log(size)
         if(size > 0){
             return res.status(200).send(post)
         }else{return res.status(404).send(post)}
@@ -119,8 +152,7 @@ app.delete(route, (req, res)=>{
 
 // faz um update em um post, caso ele exista
 
-app.use(express.json());
-//app.use(express.urlencoded({extended: true}));
+
 
 let docs =  db.collection('posts').get(); //pega todos os posts --> promise
 
